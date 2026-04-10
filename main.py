@@ -84,7 +84,7 @@ preprocessor = ColumnTransformer(
 
 
 # %%
-def objective(trial):
+def objective(trial: optuna.trial.Trial):
     with mlflow.start_run(nested=True):
         model_name = trial.suggest_categorical(
             "model",
@@ -132,7 +132,9 @@ def objective(trial):
         mlflow.log_params(trial.params)
         mlflow.log_metric("roc_auc", result)
 
-        mlflow.sklearn.log_model(pipeline, name=model_name)
+        model_info = mlflow.sklearn.log_model(pipeline, name=model_name)
+
+        trial.set_user_attr("model_uri", model_info.model_uri)
 
         return result
 
@@ -140,7 +142,16 @@ def objective(trial):
 # %%
 with mlflow.start_run(run_name="optuna_optimization"):
     study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=10, n_jobs=-1)
+    study.optimize(objective, n_trials=3)
 
 print(f"Melhor ROC-AUC: {study.best_value}")
 print(f"Melhes parâmetros: {study.best_params}")
+
+best_trial = study.best_trial
+
+model_uri = best_trial.user_attrs["model_uri"]
+
+mlflow.register_model(
+    model_uri=model_uri,
+    name="credit_scoring_model",
+)
