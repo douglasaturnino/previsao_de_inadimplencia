@@ -2,13 +2,15 @@
 
 import os
 
+import mlflow
+import optuna
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -16,6 +18,10 @@ from sklearn.preprocessing import StandardScaler
 path_home = os.getcwd()
 trein_path = os.path.join(path_home, "data", "train.csv")
 df = pd.read_csv(trein_path)
+
+
+# %%
+mlflow.set_experiment("credit_scoring_optuna")
 
 # %%
 
@@ -75,31 +81,66 @@ preprocessor = ColumnTransformer(
     ],
     remainder="passthrough",
 )
-# %%
-models = {
-    "RandomForest": RandomForestClassifier(
-        n_estimators=200, max_depth=6, class_weight="balanced"
-    ),
-    "GradientBoostingClassifier": GradientBoostingClassifier(
-        n_estimators=200, max_depth=3
-    ),
-    "LogisticRegression": LogisticRegression(
-        max_iter=1000, class_weight="balanced"
-    ),
-}
+
 
 # %%
-result = {}
-for name, model in models.items():
-    pipeline = Pipeline(
-        steps=[
-            ("preprocessor", preprocessor),
-            ("model", model),
-        ]
-    )
-    pipeline.fit(X_train, y_train)
-    pred = pipeline.predict_proba(X_valid)[:, 1]
-    metric = roc_auc_score(y_valid, pred)
+def objective(trial):
+    with mlflow.start_run(nested=True):
+        model_name = trial.suggest_categorical(
+            "model",
+            [
+                "RandomForest",
+                "GradientBoostingClassifier",
+                "LogisticRegression",
+            ],
+        )
+        if model_name == "RandomForest":
+            model = RandomForestClassifier(
+                n_estimators=trial.suggest_int("rf_n_estimators", 50, 500),
+                max_depth=trial.suggest_int("rf_max_depth", 3, 12),
+                min_samples_split=trial.suggest_int(
+                    "rf_min_samples_split", 2, 10
+                ),
+                class_weight="balanced",
+            )
+        elif model_name == "GradientBoostingClassifier":
+            model = GradientBoostingClassifier(
+                n_estimators=trial.suggest_int("gb_n_estimators", 50, 500),
+                max_depth=trial.suggest_int("gb_max_depth", 3, 12),
+                learning_rate=trial.suggest_float(
+                    "gb_learning_rate", 0.01, 0.3
+                ),
+            )
+        else:
+            model = LogisticRegression(
+                C=trial.suggest_float("lr_c", 0.01, 10),
+                max_iter=trial.suggest_int("lr_max_iter", 100, 2000),
+                class_weight="balanced",
+            )
 
-    result[name] = metric
-    print(f"{name} ROC-AUC: {metric:.4f}")
+        pipeline = Pipeline(
+            steps=[
+                ("preprocessor", preprocessor),
+                ("model", model),
+            ]
+        )
+
+        result = cross_val_score(
+            pipeline, X_train, y_train, cv=3, scoring="roc_auc"
+        ).mean()
+
+        mlflow.log_params(trial.params)
+        mlflow.log_metric("roc_auc", result)
+
+        mlflow.sklearn.log_model(pipeline, name=model_name)
+
+        return result
+
+
+# %%
+with mlflow.start_run(run_name="optuna_optimization"):
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective, n_trials=10, n_jobs=-1)
+
+print(f"Melhor ROC-AUC: {study.best_value}")
+print(f"Melhes parâmetros: {study.best_params}")
