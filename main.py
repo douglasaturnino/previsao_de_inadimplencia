@@ -37,6 +37,13 @@ class DataLoader:
 
         df = df[columns]
 
+        df.columns = df.columns.str.replace("-", "_", regex=False)
+        df = df[df["TaxaDeUtilizacaoDeLinhasNaoGarantidas"] <= 1]
+        df = df[df["NumeroDeVezes30_59DiasAtrasoNaoPior"] <= 20]
+        df = df[df["TaxaDeEndividamento"] <= 12]
+        df = df[df["NumeroDeVezes90DiasAtraso"] <= 20]
+        df = df[df["NumeroDeVezes60_89DiasAtrasoNaoPior"] <= 20]
+
         # Seprando os dados em X e y
         X = df.drop("target", axis=1)
         y = df["target"]
@@ -54,17 +61,17 @@ class PreprocessorBuilder:
             "target",
             "TaxaDeUtilizacaoDeLinhasNaoGarantidas",
             "Idade",
-            "NumeroDeVezes30-59DiasAtrasoNaoPior",
+            "NumeroDeVezes30_59DiasAtrasoNaoPior",
             "TaxaDeEndividamento",
             "RendaMensal",
             "NumeroDeLinhasDeCreditoEEmprestimosAbertos",
             "NumeroDeVezes90DiasAtraso",
             "NumeroDeEmprestimosOuLinhasImobiliarias",
-            "NumeroDeVezes60-89DiasAtrasoNaoPior",
+            "NumeroDeVezes60_89DiasAtrasoNaoPior",
             "NumeroDeDependentes",
         ]
         # Criando as colunas para o pipeline
-        column_median = ["RendaMensal", "NumeroDeDependentes"]
+        column_zero = ["RendaMensal", "NumeroDeDependentes"]
         remover = ["target", "RendaMensal", "NumeroDeDependentes"]
 
         column_scaler = [col for col in columns if col not in remover]
@@ -72,7 +79,7 @@ class PreprocessorBuilder:
         # Criando o pipeline
         numeric_transformer = Pipeline(
             steps=[
-                ("imputer", SimpleImputer(strategy="median")),
+                ("imputer", SimpleImputer(strategy="constant", fill_value=0)),
                 ("scaler", StandardScaler()),
             ]
         )
@@ -84,7 +91,7 @@ class PreprocessorBuilder:
                 (
                     "num",
                     numeric_transformer,
-                    column_median,
+                    column_zero,
                 ),
                 (
                     "scaler",
