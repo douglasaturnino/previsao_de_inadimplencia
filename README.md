@@ -6,6 +6,35 @@ Este repositorio contem um pipeline para treinar modelos de score de credito usa
 
 # Estrutura do Projeto
 
+```
+linkedin-webscraper
+|---.gitignore
+|---.python-version
+|---api.py
+|---home.py
+|---main.py
+|---mkdocs.yml
+|---mlflow.db
+|---pyproject.toml
+|---README.md
+|---uv.lock
+|   
++---data
+|-------test.csv
+|-------train.csv
+|       
++---docs
+|-------DataLoad.md
+|-------gen_home_page.py
+|-------ModelTrainer.md
+|-------PreprocessorBuilder.md
+|-------streamlit.md
+|       
++---pages
+|-------app.py
+|-------painel.py
+```
+
 - `main.py` - Treina os dados e usa o optuna para otimizar os paramentros do modelo para que tenhamos os melhores resultados e registro o melhor modelo no MLflow.
 
 - `api.py` - API utilizando o FastAPI e expõe o rota `/predict`.
