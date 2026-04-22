@@ -7,6 +7,31 @@ app = FastAPI()
 
 
 class DadosEntrada(BaseModel):
+    """
+    Essa classes traz todas as colunas da base de dados.
+
+    Attributes:
+        TaxaDeUtilizacaoDeLinhasNaoGarantidas (float):  Proporção do uso de crédito não garantido (ex: cartões de crédito) em relação ao limite total disponível.
+
+        Idade (int): Idade do indivíduo em anos.
+
+        NumeroDeVezes30_59DiasAtrasoNaoPior (int): Quantidade de vezes em que houve atraso entre 30 e 59 dias em pagamentos, sem atrasos mais graves associados.
+
+        TaxaDeEndividamento (float): Relação entre o total de dívidas e a renda mensal do indivíduo.
+
+        RendaMensal (float): Renda mensal do indivíduo.
+
+        NumeroDeLinhasDeCreditoEEmprestimosAbertos (int): Número total de contas de crédito e empréstimos atualmente abertas.
+
+        NumeroDeVezes90DiasAtraso (int): Número de vezes em que o indivíduo teve atraso superior a 90 dias.
+
+        NumeroDeEmprestimosOuLinhasImobiliarias (int): Quantidade de empréstimos ou linhas de crédito relacionadas a imóveis.
+
+        NumeroDeVezes60_89DiasAtrasoNaoPior (int): Número de vezes em que houve atraso entre 60 e 89 dias, sem atrasos mais graves associados.
+
+        NumeroDeDependentes (int): Número de pessoas financeiramente dependentes do indivíduo.
+    """
+
     TaxaDeUtilizacaoDeLinhasNaoGarantidas: float
     Idade: int
     NumeroDeVezes30_59DiasAtrasoNaoPior: int
@@ -21,12 +46,20 @@ class DadosEntrada(BaseModel):
 
 @app.get("/")
 def home():
+    """
+    Mostra os status da API rodando
+    """
     return {"Status": "API Rodando"}
 
 
 @app.post("/predict")
 def predict(dados: DadosEntrada):
+    """
+    Mostra ultima versão melhor do modelo no MLflow.
 
+    Returns:
+        data (dict): Dicionario com a predição e a propabilidade.
+    """
     model_name = "credit_scoring_model"
     model_version = "latest"
 
@@ -39,7 +72,8 @@ def predict(dados: DadosEntrada):
     yhat = model.predict(df)
     proba = model.predict_proba(df)
 
-    return {
+    data = {
         "predict": yhat.tolist(),
         "probabilidade": proba.tolist(),
     }
+    return data

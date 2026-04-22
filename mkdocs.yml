@@ -1,4 +1,4 @@
-site_name: Previsão de Inadimplencia 💰
+site_name: Previsão de Inadimplência 💰
 
 theme:
   name: material
@@ -7,12 +7,12 @@ theme:
 
   palette:
     - scheme: slate
-      accent: 'pink'
+      accent: pink
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
     - scheme: dark
-      accent: 'pink'
+      accent: pink
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
@@ -23,19 +23,19 @@ nav:
   - PreprocessorBuilder: PreprocessorBuilder.md
   - ModelTrainer: ModelTrainer.md
   - Streamlit: streamlit.md
+  - API: api.md
 
 markdown_extensions:
   - pymdownx.highlight
   - pymdownx.superfences
 
-
 plugins:
   - search
   - autorefs
-  - mkdocstrings:
-      handlers:
-        python:
-          paths: [.]
+  - mkdocstrings
   - gen-files:
       scripts:
         - docs/gen_home_page.py
+
+extra_javascript:
+  - javascripts/open_source.js

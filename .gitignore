@@ -3,3 +3,4 @@ data/
 mlruns/
 mlflow.db
 *.pyc
+site/
