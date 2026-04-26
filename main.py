@@ -1,27 +1,34 @@
 import os
 from typing import Optional, Tuple
 
+import dagshub
 import mlflow
 import optuna
 import pandas as pd
-from mlflow.entities import ModelVersion
+from mlflow.entities.model_registry import ModelVersion
+from mlflow.exceptions import RestException
 from mlflow.tracking import MlflowClient
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
-from sklearn.impute import SimpleImputer
+from sklearn.impute import (
+    SimpleImputer,  # imputa dados de colunas que apresentam dados faltantes
+)
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.model_selection import (  # divide os dados em treino e teste
+    cross_val_score,
+    train_test_split,
+)
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler  # normaliza os dados
 
 
 class DataLoader:
     """
-    Carrega os dados da base train
+    Carrega os dados da base train.
 
     Methods:
-        load: Função que carrega os dados
+        load: Função que carrega os dados.
     """
 
     def load(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
@@ -34,11 +41,11 @@ class DataLoader:
                 y_train (pd.Series): Target de treino.
                 y_valid (pd.Series): Target de validação.
         """
-        # Carrengando os dados
+        # Carregando os dados
         path_home = os.getcwd()
-        trein_path = os.path.join(path_home, "data", "train.csv")
+        train_path = os.path.join(path_home, "data", "train.csv")
+        df = pd.read_csv(train_path)
 
-        df = pd.read_csv(trein_path)
         columns = [
             "target",
             "TaxaDeUtilizacaoDeLinhasNaoGarantidas",
@@ -62,11 +69,11 @@ class DataLoader:
         df = df[df["NumeroDeVezes90DiasAtraso"] <= 20]
         df = df[df["NumeroDeVezes60_89DiasAtrasoNaoPior"] <= 20]
 
-        # Seprando os dados em X e y
+        # Separando os dados em X e y
         X = df.drop("target", axis=1)
         y = df["target"]
 
-        # Fazendo o split do dados
+        # Fazendo o split dos dados
         X_train, X_valid, y_train, y_valid = train_test_split(
             X, y, stratify=y, test_size=0.3
         )
@@ -75,18 +82,18 @@ class DataLoader:
 
 class PreprocessorBuilder:
     """
-    Cria um pipeline com o preprocessamento dos dados
+    Cria um pipeline com o preprocessamento dos dados.
 
     Methods:
-        build: cria o pipeline para a transformação da variavel.
+        build: Cria o pipeline para transformação das variáveis.
     """
 
     def build(self):
         """
-        cria o pipeline para a transformação da variavel.
+        Cria um pipeline com o preprocessamento dos dados.
 
         Returns:
-            preprocessor (ColumnTransformer): Pipeline com as transformações das variaveis
+            preprocessor(ColumnTransformer): Pipeline com as tranformações das variáveis.
         """
         columns = [
             "target",
@@ -101,6 +108,7 @@ class PreprocessorBuilder:
             "NumeroDeVezes60_89DiasAtrasoNaoPior",
             "NumeroDeDependentes",
         ]
+
         # Criando as colunas para o pipeline
         column_zero = ["RendaMensal", "NumeroDeDependentes"]
         remover = ["target", "RendaMensal", "NumeroDeDependentes"]
@@ -115,22 +123,20 @@ class PreprocessorBuilder:
             ]
         )
 
-        scaler = Pipeline(steps=[("scaler", StandardScaler())])
+        scaler = Pipeline(
+            steps=[("scaler", StandardScaler())]
+        )  # a normalização é realizada em todas as colunas
 
         preprocessor = ColumnTransformer(
             transformers=[
+                ("num", numeric_transformer, column_zero),
                 (
-                    "num",
-                    numeric_transformer,
-                    column_zero,
-                ),
-                (
-                    "scaler",
-                    scaler,
-                    column_scaler,
+                    "scaler",  # nome da coluna
+                    scaler,  # é o pipeline
+                    column_scaler,  # é a lista de coluna
                 ),
             ],
-            remainder="passthrough",
+            remainder="passthrough",  # significa que será preservada as colunas que não vão sofrer transformação
         )
 
         return preprocessor
@@ -138,12 +144,11 @@ class PreprocessorBuilder:
 
 class ModelTrainer:
     """
-    Treina o modelo, otimiza com o optuna o modelo, faz a validação das metricas e registra o modelo no MLflow.
+    Treina o modelo, otimiza com o optuna o modelo, faz a validação das métricas e registra o modelo no MLflow.
 
     Methods:
         __init__: Inicializa uma instância da classe ModelTrainer.
-        objective: Função optuna que serve para otimizar os parametros do modelo.
-
+        objective: Função optuna que serve para otimizar os parâmetros do modelo.
     """
 
     def __init__(
@@ -169,28 +174,28 @@ class ModelTrainer:
         self.y_valid = y_valid
         self.preprocessor = preprocessor
 
-        self.client = MlflowClient()
+        self.client = None
         self.MODEL_NAME = "credit_scoring_model"
-        # configurações
-        mlflow.set_experiment("credit_scoring_optuna")
+        # Configurações
 
-    # criando a função objective para ser otimizada pelo optuna
+    # Criando a função objective para ser otimizada pelo optuna
     def objective(self, trial: optuna.trial.Trial) -> float:
         """
-        Função optuna que serve para otimizar os parametros do modelo.
+        Função optuna que serve para otimizar os parâmetros do modelo.
 
         Args:
-            trial (optuna.trial.Trial): É um parametro do optuna.
+            trial (optuna.trial.Trial): o trial é um parâmetro do optuna.
+
 
         Returns:
-            result (float): Retorna a metrica ROC AUC.
+            result (float): retorna a métrica ROC-AUC.
         """
         with mlflow.start_run(nested=True):
             model_name = trial.suggest_categorical(
                 "model",
                 [
                     "RandomForest",
-                    "GradientBoostingClassifier",
+                    # "GradientBoostingClassifier",
                     "LogisticRegression",
                 ],
             )
@@ -203,6 +208,7 @@ class ModelTrainer:
                     ),
                     class_weight="balanced",
                 )
+
             elif model_name == "GradientBoostingClassifier":
                 model = GradientBoostingClassifier(
                     n_estimators=trial.suggest_int("gb_n_estimators", 50, 500),
@@ -211,6 +217,7 @@ class ModelTrainer:
                         "gb_learning_rate", 0.01, 0.3
                     ),
                 )
+
             else:
                 model = LogisticRegression(
                     C=trial.suggest_float("lr_c", 0.01, 10),
@@ -219,46 +226,59 @@ class ModelTrainer:
                 )
 
             pipeline = Pipeline(
-                steps=[
-                    ("preprocessor", self.preprocessor),
-                    ("model", model),
-                ]
+                steps=[("preprocessor", self.preprocessor), ("model", model)]
             )
+
             result = cross_val_score(
                 pipeline, self.X_train, self.y_train, cv=3, scoring="roc_auc"
             ).mean()
 
-            mlflow.log_params(trial.params)
+            mlflow.log_params(
+                trial.params
+            )  # loga os parametros escolhidos o trial é do optuna
             mlflow.log_metric("roc_auc", result)
 
             pipeline.fit(self.X_train, self.y_train)
 
             model_info = mlflow.sklearn.log_model(pipeline, name=model_name)
 
-            trial.set_user_attr("model_uri", model_info.model_uri)
+            trial.set_user_attr(
+                "model_uri", model_info.model_uri
+            )  # cria um novo atributo no trial
+
             return result
 
-    def optimize(self, n_trial=6) -> optuna.study:
+    def optimaze(self, n_trial=6) -> optuna.study:
         """
-        Inicia o MLflow e usa a função optimize para encontra os parametros para o modelo
+        Inicia o MLflow e usa a função optimize para encontrar os melhores parâmetros para o modelo.
 
         Args:
-            n_trial (int):  Numero de vezes para executar o experimento nesse caso é utilizado como padrão 6
+            n_trial (int): número de vezes para executar o experimento, neste caso, utilizado como padrão 6.
         """
-        # Inicializando o mlflow e usando o optuna para otimizar
+        # Inicilizando o mlflow e usando o optuna para otimizar
+
+        dagshub.init(
+            repo_owner="douglasaturnino",
+            repo_name="previsao_de_inadimplencia",
+            mlflow=True,
+        )
+        mlflow.set_tracking_uri(
+            "https://dagshub.com/douglasaturnino/previsao_de_inadimplencia.mlflow"
+        )
+        self.client = MlflowClient()
+        mlflow.set_experiment(
+            "credit_scoring_optuna"
+        )  # nome do projeto ou nome do experimento
         with mlflow.start_run(run_name="optuna_optimization"):
-            study = optuna.create_study(direction="maximize")
-            study.optimize(
-                self.objective,
-                n_trials=n_trial,
-                n_jobs=-1,
-                show_progress_bar=True,
-            )
+            study = optuna.create_study(
+                direction="maximize"
+            )  # padrao optuna chama de study para maximizar
+            study.optimize(self.objective, n_trials=n_trial)
 
         self.study = study
         return study
 
-    # Cria a função para metrica roc-auc
+    # Cria a função para métrica ROC-AUC
     def evaluate_model(
         self, model_uri: str, X_valid: pd.DataFrame, y_valid: pd.Series
     ) -> float:
@@ -273,109 +293,185 @@ class ModelTrainer:
         Returns:
             result (float): Retorna a metrica ROC AUC.
         """
+
+        print(f"Carregando modelo: {model_uri}")
+
         pipeline = mlflow.sklearn.load_model(model_uri)
         pred = pipeline.predict_proba(X_valid)[:, 1]
 
         return roc_auc_score(y_valid, pred)
 
-    # pega a versão do modelo com status de produção
     def get_champion(self) -> ModelVersion | None:
         """
         Utiliza a versão do modelo com status de production.
 
         Returns:
-            v (ModelVersion | None): Ultima versão do modelo
+            version (ModelVersion | None): Ultima versão do modelo
         """
-        versions = self.client.search_model_versions(
-            f"name='{self.MODEL_NAME}'"
+
+        if self.client is None:
+            self.client = MlflowClient()
+
+        try:
+            versions = self.client.search_model_versions(
+                f"name='{self.MODEL_NAME}'"
+            )
+        except Exception as e:
+            print(f"Nenhum modelo registrado encontrado ainda: {e}")
+            return None
+
+        production_versions = [
+            v for v in versions if v.tags.get("status") == "production"
+        ]
+
+        if not production_versions:
+            return None
+
+        # Pega a versão mais recente marcada como produção
+        production_versions = sorted(
+            production_versions, key=lambda v: int(v.version), reverse=True
         )
-        for v in versions:
-            if v.tags.get("status") == "production":
-                return v
+
+        for version in production_versions:
+            try:
+                mlflow.sklearn.load_model(version.source)
+                return version
+
+            except Exception as e:
+                print(
+                    f"Versão {version.version} marcada como production não carregou."
+                )
+                print(f"Erro: {e}")
+                print("Marcando essa versão como archived.")
+
+                try:
+                    self.client.set_model_version_tag(
+                        name=self.MODEL_NAME,
+                        version=version.version,
+                        key="status",
+                        value="archived",
+                    )
+                except Exception:
+                    pass
+
         return None
 
-    def promote_model(self) -> None:
+    def register_as_production(self, model_uri: str):
         """
-        Registra o melhor modelo entre o treino e produção faz a comparação e escolhe o melhor modelo.
+        Registra o modelo treinado e marca como produção.
+
+        Returns:
+            model_uri (str): model uri do modelo.
         """
 
-        # pegando o melhor trial do optuna
+        if self.client is None:
+            self.client = MlflowClient()
+
+        result = mlflow.register_model(
+            model_uri=model_uri, name=self.MODEL_NAME
+        )
+
+        new_version = result.version
+
+        self.client.set_model_version_tag(
+            name=self.MODEL_NAME,
+            version=new_version,
+            key="status",
+            value="production",
+        )
+
+        print(f"Modelo versão {new_version} promovido para produção.")
+        return result
+
+    def promoter_model(self) -> None:
+        """
+        Registra o melhor modelo entre o treino e produção.
+        Se não houver champion válido, promove o modelo atual.
+        """
+
+        if self.client is None:
+            self.client = MlflowClient()
+
+        # Pegando o melhor trial do Optuna
         best_trial = self.study.best_trial
-        # pegando a uri do melhor modelo
+
+        # Pegando a URI do melhor modelo treinado
         model_uri = best_trial.user_attrs["model_uri"]
 
-        # calcula a metrica roc-auc do modelo atual(desafiador)
+        # Calcula a métrica ROC-AUC do modelo atual, o challenger
         challenger_score = self.evaluate_model(
             model_uri=model_uri, X_valid=self.X_valid, y_valid=self.y_valid
         )
-        # pega o melhor modelo em produção
+
+        print(f"Challenger ROC-AUC: {challenger_score:.4f}")
+
+        # Pega o modelo atualmente em produção
         champion = self.get_champion()
-        # Verifica se existe um modelo em produção
+
+        # Se não existe champion válido, registra o modelo atual
         if champion is None:
-            # Registra o modelo treinado
-            result = mlflow.register_model(
-                model_uri=model_uri,
-                name=self.MODEL_NAME,
-            )
-            # pega a versão do modelo
-            new_version = result.version
-            # registra a versão treinada como produção
-            self.client.set_model_version_tag(
-                name=self.MODEL_NAME,
-                version=new_version,
-                key="status",
-                value="production",
-            )
+            print("Nenhum champion válido encontrado.")
+            print("Promovendo o modelo atual para produção.")
+            self.register_as_production(model_uri)
+            return
 
-            print("Primeiro modelo promovido para produção")
+        print(f"Champion encontrado: versão {champion.version}")
+        print(f"Champion source: {champion.source}")
 
-        else:  # Caso exista um champion em produção
-            # cria a uri do champion
-            champion_uri = f"models:/{self.MODEL_NAME}/{champion.version}"
-            # calcula a metrica roc-auc do modelo em produção
+        try:
+            # Aqui carrega direto do source do modelo registrado.
             champion_score = self.evaluate_model(
-                model_uri=champion_uri,
+                model_uri=champion.source,
                 X_valid=self.X_valid,
                 y_valid=self.y_valid,
             )
 
-            print(f"Champion ROC-AUC: {challenger_score:.4f}")
-            # Verifica qual modelo tem a melhor metrica (treinado ou produção)
-            if challenger_score > champion_score + 0.05:
-                print("Challenger é melhor! promovendo.")
-                # Registra o modelo treinado
-                result = mlflow.register_model(
-                    model_uri=model_uri,
-                    name=self.MODEL_NAME,
-                )
-                # pega a versão do modelo
-                new_version = result.version
-                # registra a versão treinada como produção
-                self.client.set_model_version_tag(
-                    name=self.MODEL_NAME,
-                    version=new_version,
-                    key="status",
-                    value="production",
-                )
-                # aquivando o champion no mlflow
+        except Exception as e:
+            print("Não foi possível carregar o champion atual.")
+            print(f"Erro: {e}")
+            print("Promovendo o modelo atual para produção.")
+
+            try:
                 self.client.set_model_version_tag(
                     name=self.MODEL_NAME,
                     version=champion.version,
                     key="status",
                     value="archived",
                 )
-            # O modelo que está no mlflow é melhor que o treinado atualmente
-            else:
-                print("Champion continua sendo o melhor.")
+            except Exception:
+                pass
+
+            self.register_as_production(model_uri)
+            return
+
+        print(f"Champion ROC-AUC: {champion_score:.4f}")
+
+        # Compara challenger com champion
+        if challenger_score > champion_score + 0.05:
+            print("Challenger é melhor. Promovendo.")
+
+            # Arquiva o champion antigo
+            self.client.set_model_version_tag(
+                name=self.MODEL_NAME,
+                version=champion.version,
+                key="status",
+                value="archived",
+            )
+
+            # Registra o challenger como novo production
+            self.register_as_production(model_uri)
+
+        else:
+            print("Champion continua sendo o melhor.")
 
 
 if __name__ == "__main__":
-    loader = DataLoader()
-    X_train, X_valid, y_train, y_valid = loader.load()
+    loader = DataLoader()  # inicializando a classe
+    X_train, X_valid, y_train, y_valid = loader.load()  # carregando os dados
 
-    preprocessor = PreprocessorBuilder().build()
+    preprocessor = PreprocessorBuilder().build()  # carregando o preprocessor
 
-    trainer = ModelTrainer(
+    trainer = ModelTrainer(  # criação do treino
         X_train=X_train,
         y_train=y_train,
         X_valid=X_valid,
@@ -383,10 +479,10 @@ if __name__ == "__main__":
         preprocessor=preprocessor,
     )
 
-    study = trainer.optimize(n_trial=6)
+    study = trainer.optimaze(n_trial=6)  # pegando os melhores parâmetros
 
-    # Mostrando melhores resultados da otimização
+    # Mostrando os melhores resultados da otimização
     print(f"Melhor ROC-AUC: {study.best_value}")
-    print(f"Melhes parâmetros: {study.best_params}")
+    print(f"Melhores parâmetros: {study.best_params}")
 
-    trainer.promote_model()
+    trainer.promoter_model()  # verifica qual modelo é o melhor se é o atual ou que está em produção
