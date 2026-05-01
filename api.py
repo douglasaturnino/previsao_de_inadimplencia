@@ -1,9 +1,30 @@
+import os
+
+import dagshub
 import mlflow
 import pandas as pd
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from pydantic import BaseModel
 
 app = FastAPI()
+load_dotenv()
+
+os.environ["MLFLOW_TRACKING_USERNAME"]
+os.environ["MLFLOW_TRACKING_PASSWORD"]
+
+dagshub.init(
+    repo_owner="douglasaturnino",
+    repo_name="previsao_de_inadimplencia",
+    mlflow=True,
+)
+mlflow.set_tracking_uri(
+    "https://dagshub.com/douglasaturnino/previsao_de_inadimplencia.mlflow"
+)
+model_name = "credit_scoring_model"
+model_version = "latest"
+
+model_uri = f"models:/{model_name}/{model_version}"
 
 
 class DadosEntrada(BaseModel):
@@ -60,10 +81,6 @@ def predict(dados: DadosEntrada):
     Returns:
         data (dict): Dicionario com a predição e a propabilidade.
     """
-    model_name = "credit_scoring_model"
-    model_version = "latest"
-
-    model_uri = f"models:/{model_name}/{model_version}"
 
     model = mlflow.sklearn.load_model(model_uri=model_uri)
 
