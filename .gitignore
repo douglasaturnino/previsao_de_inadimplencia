@@ -1,7 +1,8 @@
 .venv
-data/
 mlruns/
 mlflow.db
 *.pyc
 site/
 *.mp4
+.env
+*__pycache__

@@ -8,8 +8,11 @@ A aplicação então realiza uma requisição HTTP para o endpoint configurado, 
 Além disso, a interface apresenta métricas resumidas e organiza os resultados de maneira visual, facilitando a interpretação e auxiliando na tomada de decisão.
 """
 
+import os
+
 import requests
 import streamlit as st
+from dotenv import load_dotenv
 
 st.set_page_config(page_title="credit scoring", page_icon="💳")
 col1, col2 = st.columns(2, border=True)
@@ -18,7 +21,9 @@ col2.page_link(
     "pages/painel.py", label="Dashboard de Risco (2º Painel)", icon="📊"
 )
 
-API_URL = "http://localhost:8000/predict"
+load_dotenv()
+
+API_URL = os.getenv("API_URL")
 
 st.title("💰Score de Crédito 💰", text_alignment="center")
 
